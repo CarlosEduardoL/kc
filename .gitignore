@@ -1,0 +1,4 @@
+/kc
+/nimcache
+/tests/*/*
+!/tests/*/*.nim
