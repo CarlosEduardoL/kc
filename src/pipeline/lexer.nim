@@ -1,4 +1,5 @@
 import ../data_structures/token
+import ../error
 import tables
 import strutils
 import strformat
@@ -11,6 +12,7 @@ type
     index*: int
     pos*: TokenPosition
     current*: char
+    reporter: ErrorReporter
 
 const Keywords: Table[string, TK] = toTable([
   ("var", TK.Var),
@@ -32,22 +34,22 @@ const Keywords: Table[string, TK] = toTable([
   ("string", TK.StringType)
 ])
 
-proc newLexer*(source: string): Lexer =
-  ## Creates a new Lexer object with the given source code.
-  Lexer(source: source, pos: TokenPosition(line: 1, column: 1), current: source[0], index: 0)
+proc newLexer*(reporter: ErrorReporter): Lexer {.inline.} =
+  ## Creates a new Lexer object with the given error reporter.
+  Lexer(reporter: reporter)
 
-proc peek(lexer: Lexer): char =
+proc peek(lexer: Lexer): char {.inline.} =
   ## Returns the next character in the source code without advancing the position.
   lexer.current
 
-proc peekNext(lexer: Lexer): char =
+proc peekNext(lexer: Lexer): char {.inline.} =
   ## Returns the next character in the source code without advancing the position.
   if lexer.index + 1 < lexer.source.len:
     lexer.source[lexer.index + 1]
   else:
     '\0'
 
-proc prev(lexer: Lexer): char =
+proc prev(lexer: Lexer): char {.inline.} =
   ## Returns the previous character in the source code without advancing the position.
   if lexer.index > 0:
     lexer.source[lexer.index - 1]
@@ -82,11 +84,9 @@ proc skipComment(lexer: Lexer) =
 proc makeToken(pos: TokenPosition, kind: static[TK]): Token =
   ## Creates a new token with the given kind and value.
   result = Token(kind: kind, pos: pos)
-  when kind == Error or kind == Identifier or kind == Integer or kind == Float or kind == String or kind == Char:
+  when kind == Identifier or kind == Integer or kind == Float or kind == String or kind == Char:
     {.error: "This function is not supposed to be used for these token kinds".}
 
-template errorToken(msg: string): Token =
-  Token(kind: Error, errorMsg: msg, pos: lexer.pos)
 
 template makeToken(kind: TK): Token =
   makeToken(lexer.pos, kind)
@@ -122,13 +122,20 @@ proc makeString(lexer: Lexer): Token =
   while not lexer.isAtEnd() and lexer.peek() != '"':
     lexer.advance()
   if lexer.isAtEnd() or lexer.peek() != '"':
-    return errorToken("Unterminated string literal")
+    lexer.reporter.reportError(LexicalError, "Unterminated string literal", lexer.pos)
+    return Token(kind: String, strVal: lexer.source[start + 1 .. lexer.index - 2], pos: pos)
   lexer.advance() # Skip the closing quote
   result = Token(kind: String, strVal: lexer.source[start + 1 .. lexer.index - 2], pos: pos)
 
-proc tokenize*(lexer: Lexer, hadError: out bool): seq[Token] =
+proc tokenize*(lexer: Lexer, source: string): seq[Token] =
   ## Tokenizes the source code and returns a sequence of tokens.
-  hadError = false # Initialize the error flag to false
+  
+  # Reset the lexer's state
+  lexer.pos = TokenPosition(line: 1, column: 1)
+  lexer.source = source
+  lexer.current = source[0]
+  lexer.index = 0
+
   result = @[] # Initialize the token sequence
 
   while not lexer.isAtEnd():
@@ -223,18 +230,17 @@ proc tokenize*(lexer: Lexer, hadError: out bool): seq[Token] =
         result.add(makeToken(TK.And))
         lexer.advance()
       else:
-        result.add(errorToken("A single '&' is not allowed"))
-        hadError = true
+        lexer.reporter.reportError(LexicalError, "A single '&' is not allowed", lexer.pos)
       lexer.advance() # Advance the '&' character
     of '|':
       if not lexer.isAtEnd() and lexer.peekNext() == '|':
         result.add(makeToken(TK.Or))
         lexer.advance()
       else:
-        result.add(errorToken("A single '|' is not allowed"))
-        hadError = true
+        lexer.reporter.reportError(LexicalError, "A single '|' is not allowed", lexer.pos)
       lexer.advance() # Advance the '|' character
     else: 
-      result.add(errorToken(&"Unexpected character '{lexer.current}'"))
-      hadError = true
+      lexer.reporter.reportError(LexicalError, &"Unexpected character '{lexer.current}'", lexer.pos)
       lexer.advance()
+
+  result.add(makeToken(TK.EOF))

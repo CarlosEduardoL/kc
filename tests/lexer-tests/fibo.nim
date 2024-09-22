@@ -1,5 +1,6 @@
 import ../../src/pipeline/lexer
 import ../../src/data_structures/token
+import ../../src/error
 import strformat
 
 let source = """fibo(n: int): int {
@@ -12,10 +13,10 @@ let source = """fibo(n: int): int {
 fibo(10)
 """
 
-var hadError = false
-let my_lexer = newLexer(source)
-let tokens = my_lexer.tokenize(hadError)
-doAssert hadError == false, &"hadError is {hadError}"
+var reporter = newErrorReporter()
+let my_lexer = newLexer(reporter)
+let tokens = my_lexer.tokenize(source)
+doAssert reporter.hasErrors == false, &"hadError is {reporter.hasErrors}"
 let expectedTokens = @[
   Token(kind: TK.Identifier, ident: "fibo", pos: TokenPosition(line: 1, column: 1)),
   Token(kind: TK.LeftParen, pos: TokenPosition(line: 1, column: 5)),
@@ -63,7 +64,8 @@ let expectedTokens = @[
   Token(kind: TK.LeftParen, pos: TokenPosition(line: 8, column: 5)),
   Token(kind: TK.Integer, intVal: 10, pos: TokenPosition(line: 8, column: 6)),
   Token(kind: TK.RightParen, pos: TokenPosition(line: 8, column: 8)),
-  Token(kind: TK.NewLine, pos: TokenPosition(line: 8, column: 9))
+  Token(kind: TK.NewLine, pos: TokenPosition(line: 8, column: 9)),
+  Token(kind: TK.EOF, pos: TokenPosition(line: 9, column: 1))
 ]
 doAssert tokens.len == expectedTokens.len, &"tokens.len is {tokens.len}, expected {expectedTokens.len}"
 for i in 0 ..< expectedTokens.len:

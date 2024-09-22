@@ -1,9 +1,12 @@
+
+import position
+
 type
   TK* {.pure.} = enum
     ## TokenKind enum represents all possible token types for Kc language.
     ## Used in lexical analysis to categorize tokens and guide parsing.
     # Special markers
-    Error # Represents an invalid or unrecognized token
+    EOF
 
     # Literals
     Identifier # An identifier (variable/function name)
@@ -64,18 +67,14 @@ type
     BoolType # 'bool' type
     StringType # 'string' type
 
-  TokenPosition* = object
+  TokenPosition* = FilePosition
     ## TokenPosition represents the position of a token in the source code.
     ## It contains the line number and column number of the token.
-    line*: int
-    column*: int
 
   Token* = object
     ## Token represents a lexical token in the Kc language.
     ## It contains the token type, value, and position information.
     case kind*: TK
-    of Error:
-      errorMsg*: string
     of Identifier:
       ident*: string
     of Integer:
@@ -95,8 +94,6 @@ import strformat
 proc lexeme*(token: Token): string =
   ## Returns the lexeme of the token.
   case token.kind
-  of Error:
-    token.errorMsg
   of Identifier:
     token.ident
   of Integer:
@@ -191,6 +188,7 @@ proc lexeme*(token: Token): string =
     "false"
   of NoneKeyword:
     "none"
+  of EOF: "<eof>"
 
 proc `$`*(pos: TokenPosition): string =
   ## Returns a string representation of the token position.

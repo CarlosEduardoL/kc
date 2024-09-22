@@ -150,7 +150,7 @@ Return statements must have the lowest precedence, as they can terminate executi
 
 ```
 program ::= statement*
-statement ::= (declaration | assignment | expression | if | while | for | return | break | continue) ('\n' | '\\' '\n' | ';')
+statement ::= (declaration | assignment | expression | if | while | for | return | break | continue | block) ('\n' | '\\' '\n' | ';')
 
 declaration ::= var | func | struct
 
@@ -164,7 +164,9 @@ struct ::= 'struct' identifier '{' struct_field_list '}'
 struct_field_list ::= struct_field (',' struct_field)*
 struct_field ::= identifier ':' type
 
-expression ::= binary_expression | unary_expression | call_expression | identifier | literal | group_expression
+expression ::= member_access_expression | binary_expression | unary_expression | call_expression | identifier | literal | group_expression
+member_access_expression ::= expression '.' identifier
+
 group_expression ::= '(' expression ')'
 
 binary_expression ::= expression binary_operator expression

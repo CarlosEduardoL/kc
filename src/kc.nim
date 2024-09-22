@@ -3,6 +3,7 @@ import data_structures/token
 
 import std/os
 import std/strformat
+import utils/unionutils
 
 proc main() =
   if paramCount() < 1:
@@ -15,7 +16,7 @@ proc main() =
   let tokens = my_lexer.tokenize(hadError)
   if hadError:
     for token in tokens:
-      if token.kind == TK.Error:
+      checked token.kind, TK.Error:
         stderr.writeLine &"Error: {token.errorMsg} at {token.pos}"
   else:
     var line = 1
