@@ -3,7 +3,9 @@ import data_structures/position
 
 type
   CompilerErrorKind* = enum
-    LexicalError, SyntaxError, SemanticError
+    LexicalError  # Lexical errors occur when the lexer encounters invalid characters or constructs.
+    SyntaxError   # Syntax errors occur when the parser encounters invalid syntax.
+    SemanticError # Semantic errors occur when the compiler encounters errors during the compilation process.
 
   CompilerError* = object
     kind*: CompilerErrorKind

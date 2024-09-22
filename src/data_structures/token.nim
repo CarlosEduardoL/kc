@@ -1,4 +1,3 @@
-
 import position
 
 type
@@ -36,6 +35,7 @@ type
 
     # Delimiters
     NewLine # New line (\n)
+    Dot # Dot (.)
     Comma # Comma (,)
     Semicolon # Semicolon (;)
     Colon # Colon (:)
@@ -51,6 +51,7 @@ type
     Func # 'func' keyword for function declaration
     Struct # 'struct' keyword for structure declaration
     If # 'if' keyword for conditional statement
+    Elif # 'elif' keyword for alternate condition
     Else # 'else' keyword for alternate condition
     While # 'while' keyword for loop statement
     For # 'for' keyword for loop iteration
@@ -60,12 +61,14 @@ type
     True # Boolean literal 'true'
     False # Boolean literal 'false'
     NoneKeyword # 'none' keyword for no return type
+    Array # 'array' keyword for array type
 
     # Primitive types
     IntType # 'int' type
     FloatType # 'float' type
     BoolType # 'bool' type
     StringType # 'string' type
+    CharType # 'char' type
 
   TokenPosition* = FilePosition
     ## TokenPosition represents the position of a token in the source code.
@@ -104,6 +107,8 @@ proc lexeme*(token: Token): string =
     &"\"{token.strVal}\""
   of Char:
     &"\'{token.charVal}\'"
+  of Array:
+    "array"
   of IntType:
     "int"
   of FloatType:
@@ -112,6 +117,8 @@ proc lexeme*(token: Token): string =
     "bool"
   of StringType:
     "string"
+  of CharType:
+    "char"
   of NewLine:
     "'\\n'"
   of Plus:
@@ -146,6 +153,8 @@ proc lexeme*(token: Token): string =
     "'='"
   of Comma:
     "','"
+  of Dot:
+    "'.'"
   of Semicolon:
     "';'"
   of Colon:
@@ -170,6 +179,8 @@ proc lexeme*(token: Token): string =
     "struct"
   of If:
     "if"
+  of Elif:
+    "elif"
   of Else:
     "else"
   of While:
@@ -188,7 +199,8 @@ proc lexeme*(token: Token): string =
     "false"
   of NoneKeyword:
     "none"
-  of EOF: "<eof>"
+  of EOF:
+    "<eof>"
 
 proc `$`*(pos: TokenPosition): string =
   ## Returns a string representation of the token position.

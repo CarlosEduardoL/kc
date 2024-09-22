@@ -19,6 +19,7 @@ const Keywords: Table[string, TK] = toTable([
   ("func", TK.Func),
   ("struct", TK.Struct),
   ("if", TK.If),
+  ("elif", TK.Elif),
   ("else", TK.Else),
   ("while", TK.While),
   ("for", TK.For),
@@ -31,7 +32,9 @@ const Keywords: Table[string, TK] = toTable([
   ("int", TK.IntType),
   ("float", TK.FloatType),
   ("bool", TK.BoolType),
-  ("string", TK.StringType)
+  ("string", TK.StringType),
+  ("array", TK.Array),
+  ("char", TK.CharType)
 ])
 
 proc newLexer*(reporter: ErrorReporter): Lexer {.inline.} =
@@ -163,6 +166,9 @@ proc tokenize*(lexer: Lexer, source: string): seq[Token] =
       lexer.advance()
     of ',':
       result.add(makeToken(TK.Comma))
+      lexer.advance()
+    of '.':
+      result.add(makeToken(TK.Dot))
       lexer.advance()
     of '(':
       result.add(makeToken(TK.LeftParen))

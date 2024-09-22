@@ -1,5 +1,7 @@
 import pipeline/lexer
-import data_structures/token
+import pipeline/parser
+import data_structures/ast
+import error
 
 import std/os
 import std/strformat
@@ -11,20 +13,14 @@ proc main() =
     quit(1)
   let filename = paramStr(1)
   let source = readFile(filename)
-  var hadError = false
-  let my_lexer = newLexer(source)
-  let tokens = my_lexer.tokenize(hadError)
-  if hadError:
-    for token in tokens:
-      checked token.kind, TK.Error:
-        stderr.writeLine &"Error: {token.errorMsg} at {token.pos}"
-  else:
-    var line = 1
-    for token in tokens:
-      if token.pos.line != line:
-        line.inc
-        echo ""
-      stdout.write &"{token} "
+  var reporter = newErrorReporter()
+  var tokens = newLexer(reporter).tokenize(source)
+  var parser = newParser(reporter)
+  let program = parser.parse(tokens)
+  echo stringify(program)
+  if reporter.hasErrors:
+    reporter.printErrors()
+    quit(1)
 
 when isMainModule:
   main()

@@ -11,7 +11,7 @@ program         → statement* ;
 ### Statements
 
 ```
-statement       → declaration | assignment | expression | ifStmt | whileStmt | forStmt | returnStmt | breakStmt | continueStmt | block ;
+statement       → declaration | assignment | ifStmt | whileStmt | forStmt | returnStmt | breakStmt | continueStmt | block | expression ( ";" | "\n" ) ;
 declaration     → varDecl | funcDecl | structDecl ;
 block           → "{" statement* "}" ;
 ```
@@ -30,13 +30,13 @@ structField     → IDENTIFIER ":" type ;
 #### Assignment
 
 ```
-assignment      → IDENTIFIER "=" expression ;
+assignment      → (IDENTIFIER | memberAccess) "=" expression ;
 ```
 
 #### Control Structures
 
 ```
-ifStmt          → "if" expression block ( "else" block )? ;
+ifStmt          → "if" expression block ("elif" expression block)* ("else" block)?
 whileStmt       → "while" expression block ;
 forStmt         → "for" IDENTIFIER "in" expression block ;
 returnStmt      → "return" expression ;
@@ -55,7 +55,7 @@ comparison      → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
 term            → factor ( ( "-" | "+" ) factor )* ;
 factor          → unary ( ( "/" | "*" | "%" ) unary )* ;
 unary           → ( "!" | "-" ) unary | primary ;
-primary         → literal | IDENTIFIER | "(" expression ")" | memberAccess | callExpr ;
+primary         → literal | IDENTIFIER | "(" expression ")" | memberAccess | callExpr | arrayAccess ;
 
 ```
 
@@ -63,7 +63,8 @@ primary         → literal | IDENTIFIER | "(" expression ")" | memberAccess | c
 
 ```
 memberAccess    → primary "." IDENTIFIER ;
-callExpr        → IDENTIFIER "(" ( expression ( "," expression )* )? ")" ;
+callExpr        → primary "(" ( expression ( "," expression )* )? ")" ;
+arrayAccess     → primary "[" expression "]" ;
 ```
 
 #### Literals
@@ -79,9 +80,10 @@ structFieldLiteral → IDENTIFIER ":" expression ;
 ## Types
 
 ```
-type            → "int" | "float" | "bool" | "char" | "string" | arrayType | structType | "none" ;
+type            → "int" | "float" | "bool" | "char" | "string" | arrayType | structType | functionType | "none" ;
 arrayType       → "array" "[" INTEGER ";" type "]" ;
-structType      → "struct" IDENTIFIER ;
+structType      → IDENTIFIER ;
+functionType    → IDENTIFIER "(" ( type ( "," type )* )? ")" ":" type ;
 ```
 
 ## Lexical Rules

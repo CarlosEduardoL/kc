@@ -1,8 +1,21 @@
-fibo(n: int): int {
-  if n <= 1 {
+var memo: array[20; int] = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] 
+
+struct fibo {
+  call: func(int): int
+}
+
+func fibo(n: int): int {
+  if n > 1 && n <= 20 && memo[n] != 0 {
+    return memo[n]
+  }
+  elif n <= 1 {
     return n
   } else {
-    return fibo(n - 1) + fibo(n - 2)
+    memo[n] = fibo(n - 1) + fibo(n - 2)
+    return memo[n]
   }
 }
-fibo(10)
+
+var fiboObj: fibo = {call: fibo}
+
+print(fiboObj.call(10))
