@@ -1,11 +1,10 @@
 import pipeline/lexer
 import pipeline/parser
+import pipeline/analyzer
 import data_structures/ast
 import error
 
 import std/os
-import std/strformat
-import utils/unionutils
 
 proc main() =
   if paramCount() < 1:
@@ -16,7 +15,9 @@ proc main() =
   var reporter = newErrorReporter()
   var tokens = newLexer(reporter).tokenize(source)
   var parser = newParser(reporter)
-  let program = parser.parse(tokens)
+  var program = parser.parse(tokens)
+  var analyzer = newAnalyzer(reporter)
+  analyzer.analyze(program)
   echo stringify(program)
   if reporter.hasErrors:
     reporter.printErrors()

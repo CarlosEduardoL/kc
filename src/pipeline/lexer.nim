@@ -34,7 +34,8 @@ const Keywords: Table[string, TK] = toTable([
   ("bool", TK.BoolType),
   ("string", TK.StringType),
   ("array", TK.Array),
-  ("char", TK.CharType)
+  ("char", TK.CharType),
+  ("in", TK.In)
 ])
 
 proc newLexer*(reporter: ErrorReporter): Lexer {.inline.} =

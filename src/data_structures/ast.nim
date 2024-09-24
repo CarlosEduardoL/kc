@@ -1,55 +1,11 @@
 import position
+import types
+import scope
+import ../utils/refutils
 import std/tables
+import std/sequtils
 
 type
-  TypeKind* {.pure.} = enum
-    ## Enum for all types in the Kc Expressions.
-    IntType, FloatType, BoolType, StringType, CharType # Primitive types
-    StructType, FunctionType, ArrayType                # User-defined types
-    # special types
-    None           # None type for no return functions, is not valid for assignments
-    Infered        # Temporal Type for variables wihtout type annotation
-    Defined        # Temporal type that holds the identifier of a type, should be replaced by the real type
-    UndifinedType  # Temporal Type for every expression before type inference and Semantic analysis
-
-  Field* = object
-    ## Struct for fields in user-defined types
-    pos*: FilePosition
-    name*: string
-    typ*: Type
-
-  StructDescriptor = object
-    ## Struct for struct types
-    structName*: string
-    fields*: seq[Field]
-
-  ArrayDescriptor = object
-    ## Struct for array types
-    elementType*: TypeRef
-    size*: int
-
-  FunctionDescriptor = object
-    ## Struct for function types
-    paramTypes*: seq[Type]
-    returnType*: TypeRef
-
-  Type* = object
-    ## Type is a composable type that can be used to represent all types in the Kc AST.
-    pos*: FilePosition
-    case kind*: TypeKind
-      of IntType, FloatType, BoolType, StringType, CharType, UndifinedType, Infered, None: discard
-      of StructType:
-        structInfo*: StructDescriptor
-      of ArrayType:
-        arrayInfo*: ArrayDescriptor
-      of FunctionType:
-        funcInfo*: FunctionDescriptor
-      of Defined:
-        name*: string
-  
-  TypeRef = ref Type
-    ## TypeRef is a reference to a Type object.
-
   OperatorKind* = enum
     ## Enum for all operators in the Kc Expressions.
     ## Note: We can reuse the token enum for operators, but we need to define our own enum to isolate the compile phases.
@@ -100,12 +56,12 @@ type
       of CharLiteral:
         charVal*: char
       of StructLiteral:
-        structVal*: Table[Identifier, Expression]
+        structVal*: seq[(Identifier, Expression)]
       of ArrayLiteral:
         arrayLiteral*: seq[Expression]
       of NoneLiteral: discard
       of Identifier:
-        name: string
+        name*: string
       of GroupExpression:
         expr*: Expression
       of CallExpression:
@@ -152,8 +108,9 @@ type
     ## Struct for return statements
     returnValue*: Expression
   
-  BlockStmt = object
+  BlockStmt* = ref object
     ## Struct for block statements
+    scope*: Scope
     body*: seq[Statement]
 
   FunctionDecl = object
@@ -191,28 +148,31 @@ type
       of ExpressionStatement:
         expression*: Expression
       of BreakStatement, ContinueStatement: discard
+  
+  Program* = object
+    ## Program is the root type for the Kc AST.
+    statements*: seq[Statement]
 
-let
-  UNDEFINED* = Type(kind: UndifinedType)
-  NONE* = Type(kind: None)
-  INT* = Type(kind: IntType)
-  FLOAT* = Type(kind: FloatType)
-  BOOL* = Type(kind: BoolType)
-  STRING* = Type(kind: StringType)
-  CHAR* = Type(kind: CharType)
+proc toType*(structDeclaration: StructDecl): Type =
+  ## toType returns the type of the given struct declaration.
+  result = Type(kind: StructType, structInfo: StructDescriptor(structName: structDeclaration.structName.name, fields: structDeclaration.fields))
+
+proc toType*(funcDeclaration: FunctionDecl): Type =
+  ## toType returns the type of the given function declaration.
+  result = Type(kind: FunctionType, funcInfo: FunctionDescriptor(paramTypes: funcDeclaration.params.mapIt(it[1]), returnType: funcDeclaration.returnType.asRef))
 
 proc newLiteral*[T](value: T, pos: FilePosition): Expression =
   ## Creates a new literal expression with the given value and position.
   when T is int:
-    result = Expression(kind: IntLiteral, nodeType: INT, intVal: value, pos: pos, typeChecked: true)
+    result = Expression(kind: IntLiteral, nodeType: Type(kind: IntType, pos: pos), intVal: value, pos: pos, typeChecked: true)
   elif T is float:
-    result = Expression(kind: FloatLiteral, nodeType: FLOAT, floatVal: value, pos: pos, typeChecked: true)
+    result = Expression(kind: FloatLiteral, nodeType: Type(kind: FloatType, pos: pos), floatVal: value, pos: pos, typeChecked: true)
   elif T is bool:
-    result = Expression(kind: BoolLiteral, nodeType: BOOL, boolVal: value, pos: pos, typeChecked: true)
+    result = Expression(kind: BoolLiteral, nodeType: Type(kind: BoolType, pos: pos), boolVal: value, pos: pos, typeChecked: true)
   elif T is string:
-    result = Expression(kind: StringLiteral, nodeType: STRING, strVal: value, pos: pos, typeChecked: true)
+    result = Expression(kind: StringLiteral, nodeType: Type(kind: StringType, pos: pos), strVal: value, pos: pos, typeChecked: true)
   elif T is char:
-    result = Expression(kind: CharLiteral, nodeType: CHAR, charVal: value, pos: pos, typeChecked: true)
+    result = Expression(kind: CharLiteral, nodeType: Type(kind: CharType, pos: pos), charVal: value, pos: pos, typeChecked: true)
   else:
     {.error: "Unsupported literal type".}
 
@@ -221,7 +181,7 @@ proc newArrayLiteral*(elements: seq[Expression], pos: FilePosition): Expression 
   result = Expression(kind: ArrayLiteral, arrayLiteral: elements, pos: pos, typeChecked: false)
   result.nodeType = Type(kind: ArrayType, arrayInfo: ArrayDescriptor(elementType: (ref Type)(kind: UndifinedType), size: elements.len))
 
-proc newStructLiteral*(fields: Table[Identifier, Expression], pos: FilePosition): Expression =
+proc newStructLiteral*(fields: seq[(Identifier, Expression)], pos: FilePosition): Expression =
   ## Creates a new struct literal expression with the given fields and position.
   result = Expression(kind: StructLiteral, structVal: fields, pos: pos, typeChecked: false)
   result.nodeType = Type(kind: StructType, structInfo: StructDescriptor(structName: "__anonymous__", fields: @[]))
@@ -312,12 +272,6 @@ proc newType*(name: string | TypeKind, pos: FilePosition): Type =
   else:
     result = Type(kind: name, pos: pos)
 
-proc asRef*[T](t: T): ref T =
-  ## asRef returns a reference to the given type.
-  var temp: ref T = new T
-  temp[] = t
-  return temp
-
 proc newArrayType*(size: int, elementType: Type, pos: FilePosition): Type =
   ## Creates a new array type with the given size and element type.
   result = Type(kind: ArrayType, arrayInfo: ArrayDescriptor(size: size, elementType: elementType.asRef()), pos: pos)
@@ -325,6 +279,10 @@ proc newArrayType*(size: int, elementType: Type, pos: FilePosition): Type =
 proc newFuctionType*(paramTypes: seq[Type], returnType: Type, pos: FilePosition): Type =
   ## Creates a new function type with the given parameter types and return type.
   result = Type(kind: FunctionType, funcInfo: FunctionDescriptor(paramTypes: paramTypes, returnType: returnType.asRef()), pos: pos)
+
+proc newStructType*(fields: seq[Field], pos: FilePosition): Type =
+  ## Creates a new struct type with the given fields.
+  result = Type(kind: StructType, structInfo: StructDescriptor(fields: fields, structName: "__anonymous__"), pos: pos)
 
 proc newFuncDecl*(name: Identifier, params: seq[(Identifier,Type)], returnType: Type, body: Statement, pos: FilePosition): Statement =
   ## Creates a new function declaration statement with the given name, parameters, return type, and body.
@@ -358,9 +316,9 @@ proc newContinueStmt*(pos: FilePosition): Statement =
   ## Creates a new continue statement with the given position.
   result = Statement(kind: ContinueStatement, pos: pos)
 
-proc noneExpression*(): Expression =
+proc noneExpression*(pos: FilePosition): Expression =
   ## Creates a new none expression.
-  result = Expression(kind: NoneLiteral, pos: FilePosition(line: 0, column: 0), typeChecked: true, nodeType: NONE)
+  result = Expression(kind: NoneLiteral, pos: pos, typeChecked: true, nodeType: Type(kind: None, pos: pos))
 
 proc newReturnStmt*(value: Expression, pos: FilePosition): Statement =
   ## Creates a new return statement with the given value.
@@ -369,37 +327,105 @@ proc newReturnStmt*(value: Expression, pos: FilePosition): Statement =
 import std/strutils
 import std/strformat
 
+proc stringify(typ: Type, indent: int): string =
+  ## stringify returns a string representation of the given type.
+  let indentStr = repeat(" ", indent)
+  case typ.kind
+  of IntType:
+    result = &"{indentStr}int"
+  of FloatType:
+    result = &"{indentStr}float"
+  of BoolType:
+    result = &"{indentStr}bool"
+  of StringType:
+    result = &"{indentStr}string"
+  of CharType:
+    result = &"{indentStr}char"
+  of StructType:
+    result = &"{indentStr}struct {typ.structInfo.structName}:\n"
+    result &=   &"{indentStr}  fields:\n"
+    for field in typ.structInfo.fields:
+      result &= &"{indentStr}    {field.name}:\n"
+      result &= field.typ.stringify(indent + 6) & "\n"
+  of ArrayType:
+    result = &"{indentStr}array with size {typ.arrayInfo.size}:\n"
+    result &= &"{indentStr}  {typ.arrayInfo.elementType[].stringify(indent + 2)}\n"
+  of FunctionType:
+    result = &"{indentStr}func:\n"
+    result &= &"{indentStr}  params:\n"
+    for param in typ.funcInfo.paramTypes:
+      result &= param.stringify(indent + 4) & "\n"
+    result &= &"{indentStr}  return:\n"
+    result &= typ.funcInfo.returnType[].stringify(indent + 4) & "\n"
+  of Defined:
+    result = &"{indentStr}defined {typ.name}\n"
+  of Infered:
+    result = &"{indentStr}infered\n"
+  of None:
+    result = &"{indentStr}none\n"
+  of UndifinedType:
+    result = &"{indentStr}undifined\n"
+
 proc stringify*(expr: Expression, indent: int): string =
   ## stringify returns a string representation of the given expression.
   let indentStr = repeat(" ", indent)
   case expr.kind
   of IntLiteral:
-    result = &"{indentStr}intLiteral: {expr.intVal}"
+    result = &"{indentStr}intLiteral:\n"
+    result &= &"{indentStr}  value: {expr.intVal}\n"
+    result &= &"{indentStr}  type:\n"
+    result &= expr.nodeType.stringify(indent + 4) & "\n"
   of FloatLiteral:
-    result = &"{indentStr}floatLiteral: {expr.floatVal}"
+    result = &"{indentStr}floatLiteral:\n"
+    result &= &"{indentStr}  value: {expr.floatVal}\n"
+    result &= &"{indentStr}  type:\n"
+    result &= expr.nodeType.stringify(indent + 4) & "\n"
   of BoolLiteral:
-    result = &"{indentStr}boolLiteral: {expr.boolVal}"
+    result = &"{indentStr}boolLiteral:\n"
+    result &= &"{indentStr}  value: {expr.boolVal}\n"
+    result &= &"{indentStr}  type:\n"
+    result &= expr.nodeType.stringify(indent + 4) & "\n"
   of StringLiteral:
-    result = &"{indentStr}stringLiteral: {expr.strVal}"
+    result = &"{indentStr}stringLiteral:\n"
+    result &= &"{indentStr}  value: {expr.strVal}\n"
+    result &= &"{indentStr}  type:\n"
+    result &= expr.nodeType.stringify(indent + 4) & "\n"
   of CharLiteral:
-    result = &"{indentStr}charLiteral: {expr.charVal}"
+    result = &"{indentStr}charLiteral:\n"
+    result &= &"{indentStr}  value: {expr.charVal}\n"
+    result &= &"{indentStr}  type:\n"
+    result &= expr.nodeType.stringify(indent + 4) & "\n"
   of StructLiteral:
     result = &"{indentStr}structLiteral:\n"
-    for key in expr.structVal.keys:
-      result &= &"{indentStr}  {key.name}:\n"
-      result &= expr.structVal[key].stringify(indent + 4) & "\n"
+    result &= &"{indentStr}  members:\n"
+    for (key, value) in expr.structVal:
+      result &= &"{indentStr}    {key.name}:\n"
+      result &= value.stringify(indent + 6) & "\n"
+    result &= &"{indentStr}  type:\n"
+    result &= expr.nodeType.stringify(indent + 4) & "\n"
   of ArrayLiteral:
     result = &"{indentStr}arrayLiteral:\n"
     result &= &"{indentStr}  size: {expr.arrayLiteral.len}\n"
     result &= &"{indentStr}  elements:\n"
     for element in expr.arrayLiteral:
       result &= element.stringify(indent + 4) & "\n"
+    result &= &"{indentStr}  type:\n"
+    result &= expr.nodeType.stringify(indent + 4) & "\n"
   of NoneLiteral:
-    result = &"{indentStr}none"
+    result = &"{indentStr}none:\n"
+    result &= &"{indentStr}  type:\n"
+    result &= expr.nodeType.stringify(indent + 4) & "\n"
   of Identifier:
-    result = &"{indentStr}identifier: {expr.name}"
+    result = &"{indentStr}identifier:\n"
+    result &= &"{indentStr}  name: {expr.name}\n"
+    result &= &"{indentStr}  type:\n"
+    result &= expr.nodeType.stringify(indent + 4) & "\n"
   of GroupExpression:
-    result = &"{indentStr}group:\n{indentStr}{expr.expr.stringify(indent + 2)}"
+    result = &"{indentStr}group:\n"
+    result &= &"{indentStr}  expression:\n"
+    result &= expr.expr.stringify(indent + 4) & "\n"
+    result &= &"{indentStr}  type:\n"
+    result &= expr.nodeType.stringify(indent + 4) & "\n"
   of CallExpression:
     result = &"{indentStr}call:\n"
     result &= &"{indentStr}  callee:\n"
@@ -407,17 +433,23 @@ proc stringify*(expr: Expression, indent: int): string =
     result &= &"{indentStr}  arguments:\n"
     for argument in expr.callExpr.arguments:
       result &= argument.stringify(indent + 4) & "\n"
+    result &= &"{indentStr}  type:\n"
+    result &= expr.nodeType.stringify(indent + 4) & "\n"
   of ArrayAccessExpression:
     result = &"{indentStr}arrayAccess:\n"
     result &= &"{indentStr}  objectExpr:\n"
     result &= expr.arrayAccess.objectExpr.stringify(indent + 4) & "\n"
     result &= &"{indentStr}  index:\n"
     result &= expr.arrayAccess.index.stringify(indent + 4) & "\n"
+    result &= &"{indentStr}  type:\n"
+    result &= expr.nodeType.stringify(indent + 4) & "\n"
   of MemberAccessExpression:
     result = &"{indentStr}memberAccess:\n"
     result &= &"{indentStr}  objectExpr:\n"
     result &= expr.memberAccess.objectExpr.stringify(indent + 4) & "\n"
-    result &= &"{indentStr}  member: {expr.memberAccess.member}"
+    result &= &"{indentStr}  member: {expr.memberAccess.member}\n"
+    result &= &"{indentStr}  type:\n"
+    result &= expr.nodeType.stringify(indent + 4) & "\n"
 
 proc stringify*(stmt: ref Statement, indent: int): string
 
@@ -428,41 +460,43 @@ proc stringify*(stmt: Statement, indent: int): string =
   of VarDeclaration:
     result = &"{indentStr}varDeclaration:\n"
     result &= &"{indentStr}  name:{stmt.varDecl.name}\n"
-    result &= &"{indentStr}  varType:{stmt.varDecl.varType.kind}\n"
+    result &= &"{indentStr}  varType:\n"
+    result &= stmt.varDecl.varType.stringify(indent + 4) & "\n"
     result &= &"{indentStr}  initialValue:\n"
-    result &= stmt.varDecl.initialValue.stringify(indent + 4)
+    result &= stmt.varDecl.initialValue.stringify(indent + 4) & "\n"
   of Assignment:
     result = &"{indentStr}assignment:\n"
     result &= &"{indentStr}  target:\n"
-    result &= stmt.assign.target.stringify(indent + 4)
+    result &= stmt.assign.target.stringify(indent + 4) & "\n"
     result &= &"{indentStr}  value:\n"
-    result &= stmt.assign.value.stringify(indent + 4)
+    result &= stmt.assign.value.stringify(indent + 4) & "\n"
   of IfStatement:
     result = &"{indentStr}if:\n"
     result &= &"{indentStr}  condition:\n"
-    result &= stmt.ifStmt.condition.stringify(indent + 4)
+    result &= stmt.ifStmt.condition.stringify(indent + 4) & "\n"
     result &= &"{indentStr}  thenBranch:\n"
-    result &= stmt.ifStmt.thenBranch.stringify(indent + 4)
+    result &= stmt.ifStmt.thenBranch.stringify(indent + 4) & "\n"
     for elifStmt in stmt.ifStmt.elifBranches:
       result &= &"{indentStr}elif:\n"
       result &= &"{indentStr}  condition:\n"
-      result &= elifStmt.condition.stringify(indent + 4)
+      result &= elifStmt.condition.stringify(indent + 4) & "\n"
       result &= &"{indentStr}  thenBranch:\n"
-      result &= elifStmt.thenBranch.stringify(indent + 4)
+      result &= elifStmt.thenBranch.stringify(indent + 4) & "\n"
     if stmt.ifStmt.elseBranch != nil:
       result &= &"{indentStr}else:\n"
-      result &= stmt.ifStmt.elseBranch.stringify(indent + 4)
+      result &= stmt.ifStmt.elseBranch.stringify(indent + 4) & "\n"
   of WhileStatement:
     result = &"{indentStr}while:\n"
     result &= &"{indentStr}  condition:\n"
-    result &= stmt.whileStmt.condition.stringify(indent + 4)
+    result &= stmt.whileStmt.condition.stringify(indent + 4) & "\n"
     result &= &"{indentStr}  body:\n"
-    result &= stmt.whileStmt.body.stringify(indent + 4)
+    result &= stmt.whileStmt.body.stringify(indent + 4) & "\n"
   of ReturnStatement:
     result = &"{indentStr}return:\n"
-    result &= stmt.returnStmt.returnValue.stringify(indent + 2)
+    result &= stmt.returnStmt.returnValue.stringify(indent + 2) & "\n"
   of BlockStatement:
     result = &"{indentStr}block:\n"
+    result &= &"{indentStr}  hasScope: {stmt.blockStmt.scope != nil}\n"
     for statement in stmt.blockStmt.body:
       result &= statement.stringify(indent + 2) & "\n"
   of FunctionDeclaration:
@@ -473,7 +507,7 @@ proc stringify*(stmt: Statement, indent: int): string =
     for param in stmt.funcDecl.params:
       result &= &"{indentStr}    {param[0].name}:{param[1].kind}\n"
     result &= &"{indentStr}  body:\n"
-    result &= stmt.funcDecl.body.stringify(indent + 4)
+    result &= stmt.funcDecl.body.stringify(indent + 4) & "\n"
   of StructDeclaration:
     result = &"{indentStr}struct:\n"
     result &= &"{indentStr}  name:{stmt.structDecl.structName.name}\n"
@@ -484,9 +518,9 @@ proc stringify*(stmt: Statement, indent: int): string =
     result = &"{indentStr}expression:\n"
     result &= stmt.expression.stringify(indent + 2)
   of BreakStatement:
-    result = &"{indentStr}break"
+    result = &"{indentStr}break" & "\n"
   of ContinueStatement:
-    result = &"{indentStr}continue"
+    result = &"{indentStr}continue" & "\n"
 
 proc stringify*(stmt: ref Statement, indent: int): string =
   ## stringify returns a string representation of the given statement.
@@ -497,9 +531,9 @@ proc normalizeNewlines(s: string): string =
   let rePattern = re"(\n)+"
   return s.replace(rePattern, "\n")
 
-proc stringify*(program: seq[Statement]): string =
+proc stringify*(program: Program): string =
   ## stringify returns a string representation of the given program.
   result = ""
-  for statement in program:
+  for statement in program.statements:
     result &= statement.stringify(0) & "\n"
   result = normalizeNewlines(result)

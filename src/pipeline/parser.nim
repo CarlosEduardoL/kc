@@ -1,12 +1,13 @@
 import ../data_structures/ast
 import ../data_structures/token
 import ../data_structures/position
+import ../data_structures/types
 
 import ../utils/iterutils
+import ../utils/refutils
 
 import ../error
 
-import std/tables
 import std/strformat
 
 type
@@ -77,7 +78,7 @@ proc skipNewLines(parser: var Parser) =
     parser.advance()
 
 # Parser functions
-proc parse*(parser: var Parser, tokens: seq[Token]): seq[Statement] =
+proc parse*(parser: var Parser, tokens: seq[Token]): Program =
   ## parse takes a sequence of tokens and returns a sequence of statements.
   ## It uses a recursive descent parser to parse the tokens and construct the AST.
   # Reset the parser's state
@@ -93,7 +94,7 @@ proc parse*(parser: var Parser, tokens: seq[Token]): seq[Statement] =
       while not parser.atEnd() and parser.peek().kind != TK.EOF and parser.peek().kind != TK.NewLine:
         # Skip tokens until we reach the end of the file or a new line
         parser.advance()
-  return statements
+  return Program(statements: statements)
 
 proc parseIdentifier(parser: var Parser, name: string, pos: FilePosition): Expression =
   ## parseIdentifier parses an identifier expression.
@@ -117,7 +118,7 @@ proc parseGroup(parser: var Parser): Expression =
 proc parseStructLiteral(parser: var Parser, startPos: FilePosition): Expression =
   ## parseStructLiteral parses a struct literal expression.
   parser.advance()
-  var fields: Table[Identifier, Expression]
+  var fields: seq[(Identifier, Expression)]
   if parser.peek().kind == TK.RightCurly:
     parser.advance()
     return newStructLiteral(fields, startPos)
@@ -132,7 +133,7 @@ proc parseStructLiteral(parser: var Parser, startPos: FilePosition): Expression 
     let ident = Identifier(name: fieldName, pos: current.pos)
     parser.advance()
     expect(parser, TK.Colon, "Expected ':' after field name")
-    fields[ident] = parseExpression(parser)
+    fields.add((ident, parseExpression(parser)))
 
   if parser.peek().kind != TK.RightCurly:
     parser.reporter.reportError(
@@ -399,6 +400,29 @@ proc parseType(parser: var Parser): Type =
     expect(parser, TK.Colon, "Expected ':' after function parameter list")
     let returnType = parseType(parser)
     result = newFuctionType(paramTypes, returnType, token.pos)
+  of TK.Struct:
+    parser.advance()
+    expect(parser, TK.LeftCurly, "Expected '{' before struct field list")
+    var fields: seq[Field]
+    if parser.peek().kind == TK.RightCurly:
+      parser.advance()
+    else:
+      skipNewLines(parser)
+      doWhile check(parser, TK.Comma):
+        let current = parser.peek()
+        let fieldName =
+          case current.kind
+          of TK.Identifier:
+            current.ident
+          else:
+            parser.reportError("Expected field name")
+        parser.advance()
+        expect(parser, TK.Colon, "Expected ':' after field name")
+        let fieldType = parseType(parser)
+        fields.add(Field(name: fieldName, typ: fieldType, pos: current.pos))
+        skipNewLines(parser)
+      expect(parser, TK.RightCurly, "Expected '}' after struct field list")
+    result = newStructType(fields, token.pos)
   of NoneKeyword:
     result = newType(TypeKind.None, token.pos)
     parser.advance()
@@ -482,6 +506,7 @@ proc parseStructDeclaration(parser: var Parser): Statement =
   else:
     skipNewLines(parser)
     doWhile check(parser, TK.Comma):
+      skipNewLines(parser)
       let current = parser.peek()
       let fieldName =
         case current.kind
@@ -494,7 +519,7 @@ proc parseStructDeclaration(parser: var Parser): Statement =
       let fieldType = parseType(parser)
       fields.add(Field(name: fieldName, typ: fieldType, pos: current.pos))
       skipNewLines(parser)
-    expect(parser, TK.RightCurly, "Expected '}' after struct field list")
+    expect(parser, TK.RightCurly, "Expected '}' after struct field list but found " & parser.peek().lexeme)
   result = newStructDecl(name, fields, ident.pos)
 
 
@@ -504,7 +529,7 @@ proc parseReturnStmt(parser: var Parser): Statement =
   parser.advance()
   let value =
     if parser.peek().kind == TK.Semicolon or parser.peek().kind == TK.NewLine:
-      noneExpression()
+      noneExpression(pos)
     else:
       parseExpression(parser)
   result = newReturnStmt(value, pos)
@@ -536,10 +561,48 @@ proc parseIfStmt(parser: var Parser): Statement =
   result = newIfStmt(condition, thenBranch, elifBranches, elseBranch, pos)
 
 proc parseWhileStmt(parser: var Parser): Statement =
-  raise newException(ValueError, "While statements are not supported yet")
+  ## parseWhileStmt parses a while statement.
+  let pos = parser.peek().pos
+  parser.advance()
+  let condition = parseExpression(parser)
+  expect(parser, TK.LeftCurly, "Expected '{' before while body")
+  parser.skipNewLines()
+  let body = parseBlock(parser)
+  result = newWhileStmt(condition, body, pos)
 
 proc parseForStmt(parser: var Parser): Statement =
-  raise newException(ValueError, "For statements are not supported yet")
+  # Desugar for loops to while loops
+  let pos = parser.peek().pos
+  parser.advance()
+  var preWhile: seq[Statement]
+  let token = parser.peek()
+  let (name, identPos) =
+    case token.kind
+    of TK.Identifier: (token.ident, token.pos)
+    else: parser.reportError("Expected variable name")
+  let ident = newIdentifier(name, identPos)
+  parser.advance()
+  expect(parser, TK.In, "Expected 'in' after variable name")
+  let forRange = parseExpression(parser)
+  let rangeDeclaration = newVarDecl(
+    "__range", 
+    Type(kind: Infered, pos:forRange.pos),
+    forRange,
+    pos
+  )
+  preWhile.add(rangeDeclaration)
+  let condition = newCall(
+    newIdentifier("has_next", pos),
+    @[newIdentifier("__range", pos)],
+    pos
+  )
+  var whileBody: seq[Statement]
+  whileBody.add(newVarDecl(name, Type(kind: Infered, pos:forRange.pos), newCall(newIdentifier("next", pos), @[newIdentifier("__range", pos)], pos), pos))
+  expect(parser, TK.LeftCurly, "Expected '{' before for body")
+  parser.skipNewLines()
+  whileBody.add(parseBlock(parser))
+  preWhile.add(newWhileStmt(condition, newBlock(whileBody, pos), pos))
+  result = newBlock(preWhile, pos)
 
 proc parseBreakStmt(parser: var Parser): Statement =
   ## parseBreakStmt parses a break statement.

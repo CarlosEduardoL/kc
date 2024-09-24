@@ -62,6 +62,7 @@ type
     False # Boolean literal 'false'
     NoneKeyword # 'none' keyword for no return type
     Array # 'array' keyword for array type
+    In # 'in' keyword for range function
 
     # Primitive types
     IntType # 'int' type
@@ -119,6 +120,8 @@ proc lexeme*(token: Token): string =
     "string"
   of CharType:
     "char"
+  of In:
+    "in"
   of NewLine:
     "'\\n'"
   of Plus:

@@ -1,21 +1,82 @@
-var memo: array[20; int] = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] 
+# Memoization array for factorial
+var memo: array[10; int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
-struct fibo {
-  call: func(int): int
+# A struct to encapsulate a factorial computation strategy
+struct Factorial {
+  recursive: func(int): int,
+  iterative: func(int): int
 }
 
-func fibo(n: int): int {
-  if n > 1 && n <= 20 && memo[n] != 0 {
+# Pure recursive factorial
+func factorial_recursive(n: int): int {
+  if n == 0 {
+    return 1
+  } elif n < 10 && memo[n] != 0 {
     return memo[n]
-  }
-  elif n <= 1 {
-    return n
   } else {
-    memo[n] = fibo(n - 1) + fibo(n - 2)
+    memo[n] = n * factorial_recursive(n - 1)
     return memo[n]
   }
 }
 
-var fiboObj: fibo = {call: fibo}
+# Iterative factorial implementation
+func factorial_iterative(n: int): int {
+  var result = 1
+  for i in range(2, n + 1) {
+    result = result * i
+  }
+  return result
+}
 
-print(fiboObj.call(10))
+# A simple sum function to test array access
+func sumArray(arr: array[5; int]): int {
+  var total = 0
+  for i in range(0, 5) {
+    total = total + arr[i]
+  }
+  return total
+}
+
+# Function to print an array
+func printArray(arr: array[5; int]) {
+  for i in range(0, 5) {
+    print(arr[i])
+  }
+}
+
+struct Useless {
+  a: int
+}
+
+struct Useless2 {
+  b: func(): Useless
+}
+
+func useless(): Useless {
+  return {a: 1}
+}
+
+func useless2(): Useless2 {
+  return {b: useless}
+}
+
+# Complex call expressions
+var a: Useless = useless2().b().a
+
+# Array to test sumArray and printArray
+var testArray: array[5; int] = [1, 2, 3, 4, 5]
+
+# Declare two factorial instances using different strategies
+var fact1: Factorial = {recursive: factorial_recursive, iterative: factorial_iterative}
+var fact2: Factorial = {recursive: factorial_recursive, iterative: factorial_iterative}
+
+# Testing the functions
+print(fact1.recursive(5))  # Expect 120
+print(fact1.iterative(5))  # Expect 120
+
+# Test sumArray and printArray
+print(sumArray(testArray))  # Expect 15
+printArray(testArray)       # Expect 1, 2, 3, 4, 5
+
+# Compare recursive and iterative results
+print(fact1.recursive(6) == fact1.iterative(6))  # Expect true
